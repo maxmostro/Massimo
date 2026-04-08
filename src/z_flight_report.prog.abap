@@ -92,9 +92,6 @@ ENDMODULE.
 * Form Build Tree
 *----------------------------------------------------------------------*
 FORM build_tree.
-  DATA: lt_nodes TYPE lvc_t_ncat,
-        ls_node  TYPE lvc_s_ncat.
-
   " This is a simplified tree build. In a real scenario, you'd loop through gt_spfli
   " and use go_tree->add_node.
   " For brevity in this script:
@@ -115,6 +112,7 @@ ENDFORM.
 * PAI Module
 *----------------------------------------------------------------------*
 MODULE user_command_0100 INPUT.
+  gv_ok_code = sy-ucomm.
   CASE gv_ok_code.
     WHEN 'BACK' OR 'EXIT' OR 'CANCEL'.
       LEAVE PROGRAM.

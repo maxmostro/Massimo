@@ -15,7 +15,44 @@ DATA: go_container     TYPE REF TO cl_gui_custom_container,
       go_tree          TYPE REF TO cl_gui_alv_tree,
       go_grid          TYPE REF TO cl_gui_alv_grid.
 
-DATA: gv_ok_code TYPE sy-ucomm.
+DATA: gv_ok_code TYPE sy-ucomm,
+      gv_dd_handle TYPE i.
+
+*----------------------------------------------------------------------*
+* Drag & Drop Handler Class
+*----------------------------------------------------------------------*
+CLASS lcl_drag_drop_handler DEFINITION.
+  PUBLIC SECTION.
+    METHODS:
+      on_drag FOR EVENT on_drag OF cl_gui_alv_grid
+        IMPORTING e_row e_column es_row_no e_dragdropobj,
+      on_drop FOR EVENT on_drop OF cl_gui_alv_tree
+        IMPORTING node_key drag_drop_object.
+ENDCLASS.
+
+CLASS lcl_drag_drop_handler IMPLEMENTATION.
+  METHOD on_drag.
+    " Define the data to be dragged
+    DATA: lr_sflight TYPE REF TO sflight.
+    CREATE DATA lr_sflight.
+    READ TABLE gt_sflight INTO lr_sflight->* INDEX es_row_no-row_id.
+    IF sy-subrc = 0.
+      e_dragdropobj->object = lr_sflight.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD on_drop.
+    " Handle the dropped data
+    DATA: lr_sflight TYPE REF TO sflight.
+    lr_sflight ?= drag_drop_object->object.
+
+    IF lr_sflight IS BOUND.
+      MESSAGE |Dropped flight { lr_sflight->carrid } { lr_sflight->connid } on node { node_key }| TYPE 'I'.
+    ENDIF.
+  ENDMETHOD.
+ENDCLASS.
+
+DATA: go_handler TYPE REF TO lcl_drag_drop_handler.
 
 *----------------------------------------------------------------------*
 * Selection Screen (Not strictly required but good for completeness)
@@ -50,6 +87,20 @@ MODULE status_0100 OUTPUT.
     go_container_l = go_splitter->get_container( row = 1 column = 1 ).
     go_container_r = go_splitter->get_container( row = 1 column = 2 ).
 
+    " Drag & Drop Initialization
+    DATA: lo_dragdrop TYPE REF TO cl_gui_dragdrop,
+          lv_handle   TYPE i.
+
+    CREATE OBJECT lo_dragdrop.
+    lo_dragdrop->add(
+      EXPORTING
+        flavor     = 'FLIGHT'
+        dragsrc    = 'X'
+        droptarget = 'X'
+        effect     = cl_gui_dragdrop=>heavy ).
+
+    lo_dragdrop->get_handle( IMPORTING handle = gv_dd_handle ).
+
     " Left Side: ALV Tree for SPFLI
     CREATE OBJECT go_tree
       EXPORTING
@@ -74,17 +125,40 @@ MODULE status_0100 OUTPUT.
       CHANGING
         it_outtab           = lt_tree_structure ).
 
+    " Event Registration and Drag&Drop handle for Tree
+    DATA: lt_events TYPE cntl_simple_events,
+          ls_event  TYPE cntl_simple_event.
+
+    ls_event-eventid = cl_gui_column_tree=>eventid_drop.
+    ls_event-appl_event = 'X'.
+    APPEND ls_event TO lt_events.
+
+    CREATE OBJECT go_handler.
+
+    go_tree->set_registered_events( events = lt_events ).
+    SET HANDLER go_handler->on_drop FOR go_tree.
+
+    " Set D&D handle for tree nodes - this typically requires node layout or setting it globally
+    " For simplicity, we'll assume the flavor match is enough or set it in nodes.
+
     " Add nodes to the tree
     PERFORM build_tree.
 
     " Right Side: ALV Grid for SFLIGHT
+    DATA: ls_layout TYPE lvc_s_layo.
+    ls_layout-s_dragdrop-row_dd_hndl = gv_dd_handle.
+
     CREATE OBJECT go_grid
       EXPORTING
         i_parent = go_container_r.
 
+    " Event Registration for Grid
+    SET HANDLER go_handler->on_drag FOR go_grid.
+
     go_grid->set_table_for_first_display(
       EXPORTING
         i_structure_name = 'SFLIGHT'
+        is_layout        = ls_layout
       CHANGING
         it_outtab        = gt_sflight ).
   ENDIF.
@@ -97,7 +171,10 @@ FORM build_tree.
   " This is a simplified tree build. In a real scenario, you'd loop through gt_spfli
   " and use go_tree->add_node.
   " For brevity in this script:
-  DATA: lv_node_text TYPE lvc_val.
+  DATA: lv_node_text   TYPE lvc_value,
+        ls_node_layout TYPE lvc_s_layn.
+
+  ls_node_layout-dragdropid = gv_dd_handle.
 
   LOOP AT gt_spfli INTO DATA(ls_spfli).
     CLEAR lv_node_text.
@@ -107,7 +184,8 @@ FORM build_tree.
         i_relat_node_key = ''
         i_relationship   = cl_gui_column_tree=>relat_last_child
         i_node_text      = lv_node_text
-        is_outtab_line   = ls_spfli ).
+        is_outtab_line   = ls_spfli
+        is_node_layout   = ls_node_layout ).
   ENDLOOP.
 
   go_tree->frontend_update( ).

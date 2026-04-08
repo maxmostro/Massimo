@@ -1,5 +1,7 @@
 REPORT z_flight_report.
 
+TYPE-POOLS: lvc.
+
 *----------------------------------------------------------------------*
 * Data Declarations
 *----------------------------------------------------------------------*
@@ -95,10 +97,11 @@ FORM build_tree.
   " This is a simplified tree build. In a real scenario, you'd loop through gt_spfli
   " and use go_tree->add_node.
   " For brevity in this script:
-  DATA: lv_node_text TYPE lvc_node_t.
+  DATA: lv_node_text TYPE lvc_val.
 
   LOOP AT gt_spfli INTO DATA(ls_spfli).
-    lv_node_text = |{ ls_spfli-carrid } { ls_spfli-connid }|.
+    CLEAR lv_node_text.
+    CONCATENATE ls_spfli-carrid ls_spfli-connid INTO lv_node_text SEPARATED BY space.
     go_tree->add_node(
       EXPORTING
         i_relat_node_key = ''

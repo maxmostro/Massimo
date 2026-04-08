@@ -95,8 +95,10 @@ FORM build_tree.
   " This is a simplified tree build. In a real scenario, you'd loop through gt_spfli
   " and use go_tree->add_node.
   " For brevity in this script:
+  DATA: lv_node_text TYPE lvc_node_t.
+
   LOOP AT gt_spfli INTO DATA(ls_spfli).
-    DATA(lv_node_text) = |{ ls_spfli-carrid } { ls_spfli-connid }|.
+    lv_node_text = |{ ls_spfli-carrid } { ls_spfli-connid }|.
     go_tree->add_node(
       EXPORTING
         i_relat_node_key = ''

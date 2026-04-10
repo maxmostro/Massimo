@@ -65,9 +65,9 @@ START-OF-SELECTION.
   " Sort flights to group by Airline and Departure City
   SORT gt_spfli BY carrid cityfrom.
 
-  " Build Tree: Airlines (SCARR) -> Locations (SPFLI-CITYFROM) -> Flights (SPFLI)
+  " Build Tree with Styles matching the provided image
   LOOP AT gt_scarr INTO DATA(ls_scarr).
-    " AIRLINE LEVEL (Root)
+    " AIRLINE LEVEL (Parent style: Emphasized Positive - Teal)
     DATA ls_airline_row TYPE ty_report.
     ls_airline_row-carrid   = ls_scarr-carrid.
     ls_airline_row-carrname = ls_scarr-carrname.
@@ -77,8 +77,9 @@ START-OF-SELECTION.
           related_node = ''
           relationship = cl_gui_column_tree=>relat_last_child
           data_row     = ls_airline_row
-          text         = CONV #( ls_scarr-carrid )
+          text         = CONV #( |Parent: { ls_scarr-carrid }| )
           folder       = abap_true ).
+        lo_airline_node->set_row_style( if_salv_c_tree_style=>emphasized_positive ).
         lv_airline_key = lo_airline_node->get_key( ).
       CATCH cx_salv_msg.
         CONTINUE.
@@ -89,7 +90,7 @@ START-OF-SELECTION.
     " LOCATION & FLIGHT LEVELS
     LOOP AT gt_spfli INTO DATA(ls_spfli) WHERE carrid = ls_scarr-carrid.
 
-      " LOCATION LEVEL (New!)
+      " LOCATION LEVEL (Parent style: Emphasized Positive - Teal)
       IF ls_spfli-cityfrom <> lv_prev_location.
         DATA ls_location_row TYPE ty_report.
         ls_location_row-carrid   = ls_scarr-carrid.
@@ -100,8 +101,9 @@ START-OF-SELECTION.
               related_node = lv_airline_key
               relationship = cl_gui_column_tree=>relat_last_child
               data_row     = ls_location_row
-              text         = CONV #( |Departure: { ls_spfli-cityfrom }| )
+              text         = CONV #( |Parent: { ls_spfli-cityfrom }| )
               folder       = abap_true ).
+            lo_location_node->set_row_style( if_salv_c_tree_style=>emphasized_positive ).
             lv_location_key = lo_location_node->get_key( ).
           CATCH cx_salv_msg.
             CONTINUE.
@@ -109,16 +111,17 @@ START-OF-SELECTION.
         lv_prev_location = ls_spfli-cityfrom.
       ENDIF.
 
-      " FLIGHT LEVEL
+      " FLIGHT LEVEL (Child style: Emphasized Negative - Red)
       DATA ls_flight_row TYPE ty_report.
       MOVE-CORRESPONDING ls_spfli TO ls_flight_row.
 
       TRY.
-          lo_nodes->add_node(
+          DATA(lo_flight_node) = lo_nodes->add_node(
             related_node = lv_location_key
             relationship = cl_gui_column_tree=>relat_last_child
             data_row     = ls_flight_row
-            text         = CONV #( ls_spfli-connid ) ).
+            text         = CONV #( |Child: { ls_spfli-connid }| ) ).
+          lo_flight_node->set_row_style( if_salv_c_tree_style=>emphasized_negative ).
         CATCH cx_salv_msg.
           " Handle exception
       ENDTRY.

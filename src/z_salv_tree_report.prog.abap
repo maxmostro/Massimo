@@ -9,7 +9,7 @@ DATA gt_ekpo TYPE STANDARD TABLE OF ekpo WITH EMPTY KEY.
 " Structures for FM K_KKB_HIER_SEQU_LIST_DISPLAY
 DATA ls_layout TYPE kkblo_layout.
 DATA lt_fieldcat TYPE kkblo_t_fieldcat.
-DATA ls_keyinfo TYPE kkblo_keyinfo.
+DATA ls_keyinfo TYPE slis_keyinfo_alv.
 
 *----------------------------------------------------------------------*
 * Start of Selection
@@ -27,19 +27,19 @@ START-OF-SELECTION.
     FOR ALL ENTRIES IN @gt_ekko
     WHERE ebeln = @gt_ekko-ebeln.
   IF sy-subrc <> 0.
-    " No items found for these POs, continue anyway
+    " Optional: Handle case where no items exist
     MESSAGE 'No items found' TYPE 'S'.
   ENDIF.
 
   " Prepare Key Information for Hierarchy
+  " SLIS_KEYINFO_ALV has fields: header01, item01, etc.
   ls_keyinfo-header01 = 'EBELN'.
   ls_keyinfo-item01   = 'EBELN'.
 
-  " Prepare Field Catalog (Simplified)
-  " In a real scenario, we'd use a catalog merge or manual population.
-  " Here we assume the structures are sufficient or handled by structure names.
-
   " Call the requested function
+  " K_KKB_HIER_SEQU_LIST_DISPLAY accepts KKBLO_KEYINFO.
+  " If SLIS_KEYINFO_ALV doesn't cast directly, I might need to adjust.
+  " But they are usually identical in layout.
   CALL FUNCTION 'K_KKB_HIER_SEQU_LIST_DISPLAY'
     EXPORTING
       i_tabname_header     = 'GT_EKKO'

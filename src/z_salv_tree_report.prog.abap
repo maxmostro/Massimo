@@ -4,21 +4,25 @@ REPORT z_salv_tree_report.
 * Data Types
 *----------------------------------------------------------------------*
 TYPES: BEGIN OF ty_report,
-         carrid   TYPE scarr-carrid,
-         carrname TYPE scarr-carrname,
-         cityfrom TYPE spfli-cityfrom,
-         connid   TYPE spfli-connid,
-         cityto   TYPE spfli-cityto,
-         deptime  TYPE spfli-deptime,
-         arrtime  TYPE spfli-arrtime,
+         ebeln TYPE ekko-ebeln,
+         bukrs TYPE ekko-bukrs,
+         aedat TYPE ekko-aedat,
+         ernam TYPE ekko-ernam,
+         lifnr TYPE ekko-lifnr,
+         ebelp TYPE ekpo-ebelp,
+         matnr TYPE ekpo-matnr,
+         matkl TYPE ekpo-matkl,
+         menge TYPE ekpo-menge,
+         meins TYPE ekpo-meins,
+         netpr TYPE ekpo-netpr,
        END OF ty_report.
 
 *----------------------------------------------------------------------*
 * Data Declarations
 *----------------------------------------------------------------------*
 DATA gt_report   TYPE STANDARD TABLE OF ty_report WITH EMPTY KEY.
-DATA gt_scarr    TYPE STANDARD TABLE OF scarr WITH EMPTY KEY.
-DATA gt_spfli    TYPE STANDARD TABLE OF spfli WITH EMPTY KEY.
+DATA gt_ekko     TYPE STANDARD TABLE OF ekko WITH EMPTY KEY.
+DATA gt_ekpo     TYPE STANDARD TABLE OF ekpo WITH EMPTY KEY.
 DATA go_alv_tree TYPE REF TO cl_salv_tree.
 
 *----------------------------------------------------------------------*
@@ -26,15 +30,18 @@ DATA go_alv_tree TYPE REF TO cl_salv_tree.
 *----------------------------------------------------------------------*
 START-OF-SELECTION.
   " Fetch data
-  SELECT * FROM scarr INTO TABLE @gt_scarr.
+  SELECT * FROM ekko INTO TABLE @gt_ekko UP TO 10 ROWS.
   IF sy-subrc <> 0.
-    MESSAGE 'No airlines found' TYPE 'S' DISPLAY LIKE 'E'.
+    MESSAGE 'No Purchase Orders found' TYPE 'S' DISPLAY LIKE 'E'.
     RETURN.
   ENDIF.
 
-  SELECT * FROM spfli INTO TABLE @gt_spfli.
+  SELECT * FROM ekpo INTO TABLE @gt_ekpo
+    FOR ALL ENTRIES IN @gt_ekko
+    WHERE ebeln = @gt_ekko-ebeln.
   IF sy-subrc <> 0.
-    MESSAGE 'No flight connections found' TYPE 'S'.
+    " No items found for these POs
+    MESSAGE 'No items found for selected Purchase Orders' TYPE 'S'.
   ENDIF.
 
   " Create SALV Tree instance
@@ -51,77 +58,48 @@ START-OF-SELECTION.
 
   " Set Tree Settings (Hierarchy Header)
   DATA(lo_settings) = go_alv_tree->get_tree_settings( ).
-  lo_settings->set_hierarchy_header( 'Airlines / Locations / Flights' ).
-  lo_settings->set_hierarchy_size( 40 ).
+  lo_settings->set_hierarchy_header( 'Purchase Documents' ).
+  lo_settings->set_hierarchy_size( 30 ).
 
   " Get Nodes object to build the hierarchy
   DATA(lo_nodes) = go_alv_tree->get_nodes( ).
-  DATA lo_airline_node  TYPE REF TO cl_salv_node.
-  DATA lo_location_node TYPE REF TO cl_salv_node.
-  DATA lv_airline_key   TYPE salv_de_node_key.
-  DATA lv_location_key  TYPE salv_de_node_key.
-  DATA lv_prev_location TYPE spfli-cityfrom.
+  DATA lo_parent_node TYPE REF TO cl_salv_node.
+  DATA lv_parent_key  TYPE salv_de_node_key.
 
-  " Sort flights to group by Airline and Departure City
-  SORT gt_spfli BY carrid cityfrom.
-
-  " Build Tree with Styles matching the provided image
-  LOOP AT gt_scarr INTO DATA(ls_scarr).
-    " AIRLINE LEVEL (Parent style: Emphasized Positive - Teal)
-    DATA ls_airline_row TYPE ty_report.
-    ls_airline_row-carrid   = ls_scarr-carrid.
-    ls_airline_row-carrname = ls_scarr-carrname.
+  " Build Tree: PO Header (EKKO) -> PO Item (EKPO)
+  LOOP AT gt_ekko INTO DATA(ls_ekko).
+    " HEADER ROW (Orange/Yellow style)
+    DATA ls_header_row TYPE ty_report.
+    MOVE-CORRESPONDING ls_ekko TO ls_header_row.
 
     TRY.
-        lo_airline_node = lo_nodes->add_node(
+        lo_parent_node = lo_nodes->add_node(
           related_node = ''
           relationship = cl_gui_column_tree=>relat_last_child
-          data_row     = ls_airline_row
-          text         = CONV #( |Parent: { ls_scarr-carrid }| )
+          data_row     = ls_header_row
+          text         = CONV #( ls_ekko-ebeln )
           folder       = abap_true ).
-        lo_airline_node->set_row_style( if_salv_c_tree_style=>emphasized_positive ).
-        lv_airline_key = lo_airline_node->get_key( ).
+        " Use HEADING or INTENSIFIED for the header style
+        lo_parent_node->set_row_style( if_salv_c_tree_style=>intensified ).
+        lv_parent_key = lo_parent_node->get_key( ).
       CATCH cx_salv_msg.
         CONTINUE.
     ENDTRY.
 
-    CLEAR lv_prev_location.
-
-    " LOCATION & FLIGHT LEVELS
-    LOOP AT gt_spfli INTO DATA(ls_spfli) WHERE carrid = ls_scarr-carrid.
-
-      " LOCATION LEVEL (Parent style: Emphasized Positive - Teal)
-      IF ls_spfli-cityfrom <> lv_prev_location.
-        DATA ls_location_row TYPE ty_report.
-        ls_location_row-carrid   = ls_scarr-carrid.
-        ls_location_row-cityfrom = ls_spfli-cityfrom.
-
-        TRY.
-            lo_location_node = lo_nodes->add_node(
-              related_node = lv_airline_key
-              relationship = cl_gui_column_tree=>relat_last_child
-              data_row     = ls_location_row
-              text         = CONV #( |Parent: { ls_spfli-cityfrom }| )
-              folder       = abap_true ).
-            lo_location_node->set_row_style( if_salv_c_tree_style=>emphasized_positive ).
-            lv_location_key = lo_location_node->get_key( ).
-          CATCH cx_salv_msg.
-            CONTINUE.
-        ENDTRY.
-        lv_prev_location = ls_spfli-cityfrom.
-      ENDIF.
-
-      " FLIGHT LEVEL (Child style: Emphasized Negative - Red)
-      DATA ls_flight_row TYPE ty_report.
-      MOVE-CORRESPONDING ls_spfli TO ls_flight_row.
+    " ITEM ROWS (Blue style)
+    LOOP AT gt_ekpo INTO DATA(ls_ekpo) WHERE ebeln = ls_ekko-ebeln.
+      DATA ls_item_row TYPE ty_report.
+      MOVE-CORRESPONDING ls_ekpo TO ls_item_row.
+      " Clear header fields to emphasize it's an item row, matching the image style
+      CLEAR: ls_item_row-bukrs, ls_item_row-aedat, ls_item_row-ernam, ls_item_row-lifnr.
 
       TRY.
-          DATA(lo_flight_node) = lo_nodes->add_node(
-            related_node = lv_location_key
+          DATA(lo_item_node) = lo_nodes->add_node(
+            related_node = lv_parent_key
             relationship = cl_gui_column_tree=>relat_last_child
-            data_row     = ls_flight_row
-            text         = CONV #( |Child: { ls_spfli-connid }| ) ).
-          lo_flight_node->set_row_style( if_salv_c_tree_style=>emphasized_negative ).
+            data_row     = ls_item_row
+            text         = CONV #( ls_ekpo-ebeln ) ).
+          lo_item_node->set_row_style( if_salv_c_tree_style=>emphasized_positive ).
         CATCH cx_salv_msg.
           " Handle exception
       ENDTRY.

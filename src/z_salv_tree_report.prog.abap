@@ -6,8 +6,8 @@ REPORT z_salv_tree_report.
 TYPES: BEGIN OF ty_report,
          carrid   TYPE scarr-carrid,
          carrname TYPE scarr-carrname,
-         connid   TYPE spfli-connid,
          cityfrom TYPE spfli-cityfrom,
+         connid   TYPE spfli-connid,
          cityto   TYPE spfli-cityto,
          deptime  TYPE spfli-deptime,
          arrtime  TYPE spfli-arrtime,
@@ -51,43 +51,73 @@ START-OF-SELECTION.
 
   " Set Tree Settings (Hierarchy Header)
   DATA(lo_settings) = go_alv_tree->get_tree_settings( ).
-  lo_settings->set_hierarchy_header( 'Airlines & Flights' ).
-  lo_settings->set_hierarchy_size( 30 ).
+  lo_settings->set_hierarchy_header( 'Airlines / Locations / Flights' ).
+  lo_settings->set_hierarchy_size( 40 ).
 
   " Get Nodes object to build the hierarchy
   DATA(lo_nodes) = go_alv_tree->get_nodes( ).
-  DATA lo_node       TYPE REF TO cl_salv_node.
-  DATA lv_parent_key TYPE salv_de_node_key.
+  DATA lo_airline_node  TYPE REF TO cl_salv_node.
+  DATA lo_location_node TYPE REF TO cl_salv_node.
+  DATA lv_airline_key   TYPE salv_de_node_key.
+  DATA lv_location_key  TYPE salv_de_node_key.
+  DATA lv_prev_location TYPE spfli-cityfrom.
 
-  " Build Tree: Headers (SCARR) and Positions (SPFLI)
+  " Sort flights to group by Airline and Departure City
+  SORT gt_spfli BY carrid cityfrom.
+
+  " Build Tree: Airlines (SCARR) -> Locations (SPFLI-CITYFROM) -> Flights (SPFLI)
   LOOP AT gt_scarr INTO DATA(ls_scarr).
-    " HEADER ROW
-    DATA ls_header TYPE ty_report.
-    ls_header-carrid   = ls_scarr-carrid.
-    ls_header-carrname = ls_scarr-carrname.
+    " AIRLINE LEVEL (Root)
+    DATA ls_airline_row TYPE ty_report.
+    ls_airline_row-carrid   = ls_scarr-carrid.
+    ls_airline_row-carrname = ls_scarr-carrname.
 
     TRY.
-        lo_node = lo_nodes->add_node(
+        lo_airline_node = lo_nodes->add_node(
           related_node = ''
           relationship = cl_gui_column_tree=>relat_last_child
-          data_row     = ls_header
+          data_row     = ls_airline_row
           text         = CONV #( ls_scarr-carrid )
           folder       = abap_true ).
-        lv_parent_key = lo_node->get_key( ).
+        lv_airline_key = lo_airline_node->get_key( ).
       CATCH cx_salv_msg.
         CONTINUE.
     ENDTRY.
 
-    " POSITION ROWS for this header
+    CLEAR lv_prev_location.
+
+    " LOCATION & FLIGHT LEVELS
     LOOP AT gt_spfli INTO DATA(ls_spfli) WHERE carrid = ls_scarr-carrid.
-      DATA ls_position TYPE ty_report.
-      MOVE-CORRESPONDING ls_spfli TO ls_position.
+
+      " LOCATION LEVEL (New!)
+      IF ls_spfli-cityfrom <> lv_prev_location.
+        DATA ls_location_row TYPE ty_report.
+        ls_location_row-carrid   = ls_scarr-carrid.
+        ls_location_row-cityfrom = ls_spfli-cityfrom.
+
+        TRY.
+            lo_location_node = lo_nodes->add_node(
+              related_node = lv_airline_key
+              relationship = cl_gui_column_tree=>relat_last_child
+              data_row     = ls_location_row
+              text         = CONV #( |Departure: { ls_spfli-cityfrom }| )
+              folder       = abap_true ).
+            lv_location_key = lo_location_node->get_key( ).
+          CATCH cx_salv_msg.
+            CONTINUE.
+        ENDTRY.
+        lv_prev_location = ls_spfli-cityfrom.
+      ENDIF.
+
+      " FLIGHT LEVEL
+      DATA ls_flight_row TYPE ty_report.
+      MOVE-CORRESPONDING ls_spfli TO ls_flight_row.
 
       TRY.
           lo_nodes->add_node(
-            related_node = lv_parent_key
+            related_node = lv_location_key
             relationship = cl_gui_column_tree=>relat_last_child
-            data_row     = ls_position
+            data_row     = ls_flight_row
             text         = CONV #( ls_spfli-connid ) ).
         CATCH cx_salv_msg.
           " Handle exception
